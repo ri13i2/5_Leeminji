@@ -11,11 +11,10 @@ app = FastAPI()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 서버 메모리에 데이터 저장 (잔액 변수 추가)
 daily_data = {"income": 0, "expense": 0, "balance": 0}
 
-# 💰 IM뱅크 전용 금액 추출기
 def extract_amount(text):
+    # '원' 앞의 숫자와 콤마를 추출합니다.
     match = re.search(r'(?:입금|출금)\s*([\d,]+)', text)
     if match:
         return int(match.group(1).replace(",", ""))
@@ -30,35 +29,32 @@ def send_to_telegram(text_message):
     except Exception as e:
         print(f"발송 실패: {e}")
 
-# 밤 23:59 일일 정산 발송 함수
 def send_daily_report():
     global daily_data
     
-    # 📅 오늘 날짜 (예: 07월 01일)
     today_str = datetime.now().strftime("%m월 %d일")
     
-    # 💸 수수료 자동 계산 로직
     income = daily_data["income"]
     if income < 60000000:
         fee = 430000
     else:
         fee = int(income * 0.007)
         
-    # 📝 정산표 양식
     message = (
         f"{today_str} 정산\n\n"
         f"입금액 : {income:,}원\n"
         f"출금액 : {daily_data['expense']:,}원\n\n"
         f"수수료 : {fee:,}원\n\n"
         f"현재 잔액 : {daily_data['balance']:,}원\n\n"
-        "우리 01023531107 이민지"
+        "우리은행 01023531107 이민지"
     )
     
     send_to_telegram(message)
     
-    # ★ 핵심 포인트: 입출금액만 0원으로 리셋하고, 잔액(balance)은 어제 기록 그대로 살려둡니다!
+    # 자정이 되면 초기화
     daily_data["income"] = 0
     daily_data["expense"] = 0
+    daily_data["balance"] = 0
 
 scheduler = BackgroundScheduler(timezone="Asia/Seoul")
 scheduler.add_job(send_daily_report, 'cron', hour=23, minute=59)
@@ -68,8 +64,13 @@ scheduler.start()
 async def handle_sms(request: Request):
     global daily_data
     
-    # 500 에러 완벽 방어 코드
     raw_body = await request.body()
+    
+    # 🔍 스마트폰이 보낸 원본 데이터를 무조건 출력해서 확인합니다.
+    print(f"\n--- [수신된 원본 데이터 확인] ---")
+    print(raw_body.decode('utf-8'))
+    print(f"--------------------------------\n")
+    
     try:
         payload = json.loads(raw_body.decode('utf-8'), strict=False)
     except Exception as e:
@@ -80,16 +81,12 @@ async def handle_sms(request: Request):
     sms_number = payload.get("number", "알수없음")
     
     if not sms_message:
+        print("🚨 [경고] 문자 내용(message)이 텅 비어있습니다!")
         return {"status": "error"}
         
-    if "[sms_message]" in sms_message:
-        test_alert = f"✅ 동작 테스트 성공\n번호: {sms_number}\n내용: {sms_message}"
-        send_to_telegram(test_alert)
-        return {"status": "success"}
-        
+    # 1️⃣ [수정] 테스트 문구 차단 로직보다 실제 입/출금 단어 검사를 최우선으로 진행합니다.
     amount = extract_amount(sms_message)
     
-    # 🏦 문자에 찍힌 '잔액'을 실시간 업데이트 (오늘 문자가 없으면 어제 기억해 둔 잔액이 유지됨)
     balance_match = re.search(r'잔액\s*([\d,]+)', sms_message)
     if balance_match:
         daily_data["balance"] = int(balance_match.group(1).replace(",", ""))
@@ -98,6 +95,8 @@ async def handle_sms(request: Request):
         daily_data["income"] += amount
         realtime_alert = f"{sms_number}\n{sms_message}"
         send_to_telegram(realtime_alert)
+        print(f"✅ 입금 알림 전송 완료 (추출된 금액: {amount})")
+        return {"status": "success"}
         
     elif "출금" in sms_message or "결제" in sms_message:
         daily_data["expense"] += amount
@@ -112,6 +111,17 @@ async def handle_sms(request: Request):
             f"총 합계 {amount:,}원 / {daily_data['expense']:,}원"
         )
         send_to_telegram(expense_alert)
+        print(f"✅ 출금 알림 전송 완료 (추출된 금액: {amount})")
+        return {"status": "success"}
+        
+    # 2️⃣ 입/출금 단어가 없는데 [sms_message] 텍스트가 섞여 들어온 경우에만 테스트 성공 문구 발송
+    elif "[sms_message]" in sms_message:
+        test_alert = f"✅ 동작 테스트 성공\n번호: {sms_number}\n내용: {sms_message}"
+        send_to_telegram(test_alert)
+        return {"status": "success"}
+        
+    else:
+        print(f"🚨 [경고] '{sms_message}' 내용 안에 '입금'이나 '출금' 단어가 없어서 무시되었습니다.")
         
     return {"status": "success"}
 
