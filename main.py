@@ -56,7 +56,7 @@ def send_daily_report():
     daily_data["balance"] = 0
 
 scheduler = BackgroundScheduler(timezone="Asia/Seoul")
-scheduler.add_job(send_daily_report, 'cron', hour=23, minute=59)
+scheduler.add_job(send_daily_report, 'cron', hour=23, minute=55)
 scheduler.start()
 
 @app.post("/webhook")
