@@ -46,7 +46,6 @@ def send_daily_report():
         f"출금액 : {daily_data['expense']:,}원\n\n"
         f"수수료 : {fee:,}원\n\n"
         f"현재 잔액 : {daily_data['balance']:,}원\n\n"
-        "우리은행 01023531107 이민지"
     )
     
     send_to_telegram(message)
