@@ -129,8 +129,7 @@ async def handle_sms(request: Request):
             # 기존 출금 누적 합계 알람은 그대로 유지합니다.
             expense_alert = (
                 "출금 알람\n\n"
-                f"현재 출금액 {amount:,}원\n"
-                f"총 출금액 {daily_data['expense']:,}원\n\n"
+                f"현재 출금액 {amount:,}원\n\n"
                 f"총 합계 {amount:,}원 / {daily_data['expense']:,}원"
             )
             send_to_telegram(expense_alert)
